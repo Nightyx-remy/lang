@@ -1,0 +1,20 @@
+@import(std, standard);
+@import(math);
+
+group Operations {
+
+    pub fn add<T>(lhs: T, rhs: T): T {
+        return lhs + rhs;
+    }
+
+}
+
+fn main(): i32 {
+    Operations::add::<i32>(-1, 0);
+    @uncheck {
+        Operations::add(1, 2);
+    }
+    @unreachable;
+    @call("c") printf("Hello World\n");
+    @generic(f32) Operations::add(1.0, 0.64);
+}
