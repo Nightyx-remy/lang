@@ -90,6 +90,10 @@ pub enum Node {
         generics: Vec<PositionedValueType>,
         function: Box<PositionedNode>,
     },
+    CIInclude {
+        language: PositionedString,
+        library: PositionedString,
+    }
 }
 
 impl Display for Node {
@@ -330,6 +334,7 @@ impl Display for Node {
                 }
                 write!(f, ") {}", function);
             }
+            Node::CIInclude { language, library } => write!(f, "@include({}, {})", language, library)?,
         }
 
         Ok(())

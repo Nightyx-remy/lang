@@ -1828,7 +1828,7 @@ impl Parser {
 
     fn parse_import(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
         self.advance();
-        let end = self.expect_token(Token::LeftParenthesis);
+        self.expect_token(Token::LeftParenthesis)?;
         self.advance();
         let mut current = self.expect_current_str(Some("Identifier".to_string()))?.clone();
         return if let Token::Identifier(name) = current.value.clone() {
@@ -1902,7 +1902,37 @@ impl Parser {
     }
 
     fn parse_include(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
-        todo!()
+        self.advance();
+        self.expect_token(Token::LeftParenthesis)?;
+        self.advance();
+        let mut current = self.expect_current_str(Some("String".to_string()))?.clone();
+        return if let Token::String(language) = current.value.clone() {
+            let language = current.convert(language);
+            self.advance();
+            self.expect_token(Token::Comma)?;
+            self.advance();
+            current = self.expect_current_str(Some("String".to_string()))?.clone();
+            if let Token::String(library) = current.value.clone() {
+                let library = current.convert(library);
+                self.advance();
+                self.expect_token(Token::RightParenthesis)?;
+                self.advance();
+                let end = self.expect_token(Token::Semicolon)?.end;
+                self.advance();
+                Ok(PositionedNode::new(
+                    Node::CIInclude {
+                        language,
+                        library
+                    },
+                    start,
+                    end
+                ))
+            } else {
+                Err(Self::unexpected_token_str(current, Some("String".to_string())))
+            }
+        } else {
+            Err(Self::unexpected_token_str(current, Some("String".to_string())))
+        }
     }
 
     fn parse_generic(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
