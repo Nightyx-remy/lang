@@ -11,6 +11,7 @@ group Operations {
 }
 
 fn main(): i32 {
+    let a: A::test;
     Operations::add::<i32>(-1, 0);
     @uncheck {
         Operations::add(1, 2);

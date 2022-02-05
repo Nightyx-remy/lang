@@ -488,7 +488,7 @@ pub enum ValueType {
     Reference(Box<PositionedValueType>),
     Array(Box<PositionedNode>, Box<PositionedValueType>),
     Tuple(Vec<PositionedValueType>),
-    Custom(String),
+    Custom(PositionedIdentifier),
 }
 
 impl Display for ValueType {

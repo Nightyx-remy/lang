@@ -776,7 +776,7 @@ impl Parser {
     }
 
     fn parse_type(&mut self) -> Result<PositionedValueType, PositionedParserError> {
-        let current = self.expect_current_str(Some("Type".to_string()))?;
+        let current = self.expect_current_str(Some("Type".to_string()))?.clone();
         match &current.value {
             Token::Keyword(keyword) => {
                 match keyword {
@@ -787,7 +787,33 @@ impl Parser {
                     _ => Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string()))),
                 }
             }
-            Token::Identifier(id) => Ok(current.convert(ValueType::Custom(id.clone()))),
+            Token::Identifier(id) => {
+                let mut identifier = current.convert(Identifier::root(id.clone()));
+                loop {
+                    if let Some(next) = self.nth(1) {
+                        match next.value {
+                            Token::DoubleColon => {
+                                let start = current.start;
+                                if let Some(next2) = self.nth(2) {
+                                    if let Token::Identifier(id) = next2.clone().value {
+                                        identifier = PositionedIdentifier::new(
+                                            Identifier::with_parent(identifier, id.clone()),
+                                            start,
+                                            next2.end
+                                        );
+                                        self.advance_x(2);
+                                    } else {
+                                        return Ok(current.convert(ValueType::Custom(identifier)));
+                                    }
+                                } else {
+                                    return Ok(current.convert(ValueType::Custom(identifier)));
+                                }
+                            }
+                            _ => return Ok(current.convert(ValueType::Custom(identifier)))
+                        }
+                    }
+                }
+            },
             Token::QuestionMark => { // [?][Type]
                 let start = current.start;
                 self.advance();
