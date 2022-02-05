@@ -158,7 +158,7 @@ impl Parser {
         self.expect_token(Token::Equal)?;
         self.advance();
         let expr = self.parse_expr()?;
-        self.rewind(); // (Should end on last token)
+        self.rewind(); // Align to the last token of [Expr]
         let end = expr.end;
         return Ok(PositionedNode::new(
             Node::VariableAssignment {
@@ -170,133 +170,151 @@ impl Parser {
         ));
     }
 
+    fn parse_left_parenthesis(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
+        self.advance(); // previous: (
+        let mut elements = Vec::new();
+        let mut allow_next = true;
+        let end;
+        loop {
+            let current = self.expect_current(Some(Token::RightParenthesis))?;
+            match current.value {
+                Token::Comma => {
+                    if !allow_next {
+                        allow_next = true;
+                        self.advance(); // previous: ,
+                    } else {
+                        return Err(Self::unexpected_token_str(current.clone(), Some("Expression".to_string())));
+                    }
+                }
+                Token::RightParenthesis => {
+                    if !allow_next {
+                        end = current.end;
+                        break;
+                    } else {
+                        return Err(Self::unexpected_token_str(current.clone(), Some("Expression".to_string())));
+                    }
+                }
+                _ => {
+                    if allow_next {
+                        let expr = self.parse_expr()?;
+                        elements.push(expr);
+                        allow_next = false;
+                    } else {
+                        return Err(Self::unexpected_token(current.clone(), Some(Token::Comma)));
+                    }
+                }
+            }
+        }
+
+        return match elements.len() {
+            1 => {
+                let mut body = elements.remove(0);
+                body.start = start;
+                body.end = end;
+                Ok(body)
+            }
+            _ => Ok(PositionedNode::new(
+                Node::Value(ValueNode::Tuple(elements)),
+                start,
+                end
+            ))
+        };
+    }
+
+    fn parse_array(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
+        self.advance(); // previous {
+        let mut elements = Vec::new();
+        let mut allow_next = true;
+        let end;
+        loop {
+            let current = self.expect_current(Some(Token::RightCurlyBracket))?;
+            match current.value {
+                Token::Comma => {
+                    if !allow_next {
+                        allow_next = true;
+                        self.advance();
+                    } else {
+                        return Err(Self::unexpected_token_str(current.clone(), Some("Expression".to_string())));
+                    }
+                }
+                Token::RightCurlyBracket => {
+                    if !allow_next {
+                        end = current.end;
+                        break;
+                    } else {
+                        return Err(Self::unexpected_token_str(current.clone(), Some("Expression".to_string())));
+                    }
+                }
+                _ => {
+                    if allow_next {
+                        let expr = self.parse_expr()?;
+                        elements.push(expr);
+                        allow_next = false;
+                    } else {
+                        return Err(Self::unexpected_token(current.clone(), Some(Token::Comma)));
+                    }
+                }
+            }
+        }
+
+        return Ok(PositionedNode::new(
+            Node::Value(ValueNode::Array(elements)),
+            start,
+            end
+        ));
+    }
+
+    fn parse_identifier(&mut self, mut identifier: PositionedIdentifier, start: Position) -> Result<PositionedNode, PositionedParserError> {
+        if let Some(next) = self.nth(1) {
+            match next.value {
+                Token::Equal => return self.parse_variable_assignment(identifier),
+                Token::DoubleColon => {
+                    if let Some(next2) = self.nth(2) {
+                        match next2.value.clone() {
+                            Token::Identifier(name) => {
+                                identifier = PositionedIdentifier::new(
+                                    Identifier::with_parent(identifier, name),
+                                    start,
+                                    next2.end
+                                );
+                                self.advance_x(2); // Align with [Identifier]
+                                return self.parse_identifier(identifier, start);
+                            }
+                            Token::LeftAngle => {
+                                self.advance_x(2); // Align with <
+                                let node = self.parse_function_call(identifier, start);
+                                self.rewind(); // Align with }
+                                return node;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Token::LeftParenthesis => {
+                    self.advance(); // Align with (
+                    let node = self.parse_function_call(identifier, start);
+                    self.rewind(); // Align with }
+                    return node;
+                }
+                _ => {}
+            }
+        }
+
+        return Ok(identifier.clone().convert(Node::VariableCall { name: identifier }));
+    }
+
     fn parse_value(&mut self) -> Result<PositionedNode, PositionedParserError> {
         let current = self.expect_current(None)?.clone();
         match current.value.clone() {
             Token::String(value) => Ok(current.convert(Node::Value(ValueNode::String(value)))),
             Token::Char(value) => Ok(current.convert(Node::Value(ValueNode::Char(value)))),
             Token::Number(number_type, value) => Ok(current.convert(Node::Value(ValueNode::Number(number_type, value)))),
-            Token::LeftParenthesis => {
-                let start = current.start;
-                self.advance();
-                let mut parts = Vec::new();
-                let mut allow_next = true;
-                let end;
-                loop {
-                    let current = self.expect_current(Some(Token::RightParenthesis))?;
-                    match current.value {
-                        Token::Comma => {
-                            if !allow_next {
-                                allow_next = true;
-                                self.advance();
-                            } else {
-                                return Err(Self::unexpected_token_str(current.clone(), Some("Expression".to_string())));
-                            }
-                        }
-                        Token::RightParenthesis => {
-                            if !allow_next {
-                                end = current.end;
-                                break;
-                            } else {
-                                return Err(Self::unexpected_token_str(current.clone(), Some("Expression".to_string())));
-                            }
-                        }
-                        _ => {
-                            if allow_next {
-                                let expr = self.parse_expr()?;
-                                parts.push(expr);
-                                allow_next = false;
-                            } else {
-                                return Err(Self::unexpected_token(current.clone(), Some(Token::Comma)));
-                            }
-                        }
-                    }
-                }
-
-                return match parts.len() {
-                    1 => {
-                        let mut body = parts.remove(0);
-                        body.start = start;
-                        body.end = end;
-                        Ok(body)
-                    }
-                    _ => {
-                        Ok(PositionedNode::new(
-                            Node::Value(ValueNode::Tuple(parts)),
-                            start,
-                            end
-                        ))
-                    }
-                };
-            }
-            Token::LeftCurlyBracket => {
-                let start = current.start;
-                self.advance();
-                let mut values = Vec::new();
-                let end;
-                loop {
-                    values.push(self.parse_expr()?);
-                    let current = self.expect_current(Some(Token::RightCurlyBracket))?;
-                    match current.value {
-                        Token::Comma => self.advance(),
-                        Token::RightCurlyBracket => {
-                            end = current.end;
-                            break
-                        },
-                        _ => return Err(Self::unexpected_token_str(current.clone(), Some("{ or ,".to_string()))),
-                    }
-                }
-                Ok(PositionedNode::new(
-                    Node::Value(ValueNode::Array(values)),
-                    start,
-                    end
-                ))
-            }
+            Token::LeftParenthesis => return self.parse_left_parenthesis(current.start),
+            Token::LeftCurlyBracket => return self.parse_array(current.start),
             Token::Identifier(name) => {
-                let mut id = current.convert(Identifier::root(name));
+                let id = current.convert(Identifier::root(name));
                 let start = id.start;
-                loop {
-                    if let Some(mut next) = self.nth(1) {
-                        match next.value {
-                            Token::Equal => return self.parse_variable_assignment(id),
-                            Token::DoubleColon => {
-                                if let Some(next2) = self.nth(2) {
-                                    match next2.value.clone() {
-                                        Token::LeftAngle => {
-                                            self.advance_x(2); // Aligned on left_angle
-                                            let node = self.parse_function_call(id, start);
-                                            self.rewind();
-                                            return node;
-                                        }
-                                        Token::Identifier(name) => {
-                                            // Identifier::Identifier...
-                                            id = PositionedIdentifier::new(
-                                                Identifier::with_parent(id, name),
-                                                start,
-                                                next2.end
-                                            );
-                                            self.advance_x(2);
-                                        }
-                                        _ => break,
-                                    }
-                                }
-                            }
-                            Token::LeftParenthesis => {
-                                self.advance(); // Align with left parenthesis
-                                let node = self.parse_function_call(id, start);
-                                self.rewind();
-                                return node;
-                            }
-                            _ => break,
-                        }
-                    } else {
-                        break;
-                    }
-                }
-                // Variable Call
-                Ok(current.convert(Node::VariableCall {
-                    name: id
-                }))
+                return self.parse_identifier(id, start);
             }
             Token::Keyword(keyword) => {
                 match keyword {
@@ -903,6 +921,11 @@ impl Parser {
             start,
             end
         ));
+    }
+
+    fn parse_body(&mut self) -> Result<Vec<PositionedNode>, PositionedParserError> {
+
+        todo!()
     }
 
     fn parse_function_def(&mut self, access: Option<PositionedAccessModifier>, global: Option<EmptyPositioned>, start: Position) -> Result<PositionedNode, PositionedParserError> {
