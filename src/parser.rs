@@ -1954,11 +1954,54 @@ impl Parser {
     }
 
     fn parse_lifetime(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
-        todo!()
+        self.advance();
+        self.expect_token(Token::LeftParenthesis)?;
+        self.advance();
+        let current = self.expect_current_str(Some("Identifier".to_string()))?;
+        return if let Token::Identifier(name) = current.value.clone() {
+            let name = current.convert(name);
+            self.advance();
+            self.expect_token(Token::RightParenthesis)?;
+            self.advance();
+            let expr = self.parse_current()?;
+            self.rewind();
+            let end = self.get_current().unwrap().end;
+            self.advance();
+            Ok(PositionedNode::new(
+                Node::CILifetime {
+                    name,
+                    expr: Box::new(expr)
+                },
+                start,
+                end
+            ))
+        } else {
+            Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())))
+        }
     }
 
     fn parse_free(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
-        todo!()
+        self.advance();
+        self.expect_token(Token::LeftParenthesis)?;
+        self.advance();
+        let current = self.expect_current_str(Some("Identifier".to_string()))?;
+        return if let Token::Identifier(name) = current.value.clone() {
+            let name = current.convert(name);
+            self.advance();
+            self.expect_token(Token::RightParenthesis)?;
+            self.advance();
+            let end = self.expect_token(Token::Semicolon)?.end;
+            self.advance();
+            Ok(PositionedNode::new(
+                Node::CIFree {
+                    name
+                },
+                start,
+                end
+            ))
+        } else {
+            Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())))
+        }
     }
 
     fn parse_compiler_instruction(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {

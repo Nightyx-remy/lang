@@ -93,6 +93,13 @@ pub enum Node {
     CIInclude {
         language: PositionedString,
         library: PositionedString,
+    },
+    CILifetime {
+        name: PositionedString,
+        expr: Box<PositionedNode>,
+    },
+    CIFree {
+        name: PositionedString
     }
 }
 
@@ -335,6 +342,8 @@ impl Display for Node {
                 write!(f, ") {}", function);
             }
             Node::CIInclude { language, library } => write!(f, "@include({}, {})", language, library)?,
+            Node::CILifetime { name, expr } => write!(f, "@lifetime({}) {}", name, expr)?,
+            Node::CIFree { name } => write!(f, "@free({})", name)?,
         }
 
         Ok(())

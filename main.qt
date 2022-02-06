@@ -11,6 +11,8 @@ group Operations {
 }
 
 fn main(): i32 {
+    @lifetime(A) var a = 33;
+
     if (a) {
         a = a + 1;
     } else if (b) {
@@ -26,6 +28,7 @@ fn main(): i32 {
     @uncheck {
         Operations::add(1, 2);
     }
+    @free(A);
     @unreachable;
     @call("c") printf("Hello World\n");
     @generic(f32) Operations::add(1.0, 0.64);
