@@ -775,6 +775,67 @@ impl Parser {
         return Ok(left);
     }
 
+    fn parse_custom_type(&mut self, mut identifier: PositionedIdentifier, start: Position) -> Result<PositionedValueType, PositionedParserError> {
+        if let Some(next) = self.nth(1) {
+            if next.value == Token::DoubleColon {
+                if let Some(next2) = self.nth(2) {
+                    if let Token::Identifier(id) = next2.value.clone() {
+                        identifier = PositionedIdentifier::new(
+                            Identifier::with_parent(identifier, id),
+                            start,
+                            next2.end
+                        );
+                        self.advance_x(2);
+                        return self.parse_custom_type(identifier, start);
+                    }
+                }
+            }
+        }
+        return Ok(identifier.clone().convert(ValueType::Custom(identifier)));
+    }
+
+    fn parse_tuple_type(&mut self, start: Position) -> Result<PositionedValueType, PositionedParserError> {
+        self.advance(); // previous: (
+        let mut elements = Vec::new();
+        let mut allow_next = true;
+        let end;
+        loop {
+            let current = self.expect_current_str(Some("Type".to_string()))?;
+            match current.value {
+                Token::Comma => {
+                    if !allow_next {
+                        allow_next = true;
+                        self.advance();
+                    } else {
+                        return Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string())))?;
+                    }
+                }
+                Token::RightParenthesis => {
+                    if !allow_next {
+                        end = current.end;
+                        break;
+                    } else {
+                        return Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string())))?;
+                    }
+                }
+                _ => {
+                    if allow_next {
+                        let value_type = self.parse_type()?;
+                        self.advance();
+                        elements.push(value_type);
+                        allow_next = false;
+                    }
+                }
+            }
+        }
+
+        return Ok(PositionedValueType::new(
+            ValueType::Tuple(elements),
+            start,
+            end,
+        ));
+    }
+
     fn parse_type(&mut self) -> Result<PositionedValueType, PositionedParserError> {
         let current = self.expect_current_str(Some("Type".to_string()))?.clone();
         match &current.value {
@@ -789,30 +850,7 @@ impl Parser {
             }
             Token::Identifier(id) => {
                 let mut identifier = current.convert(Identifier::root(id.clone()));
-                loop {
-                    if let Some(next) = self.nth(1) {
-                        match next.value {
-                            Token::DoubleColon => {
-                                let start = current.start;
-                                if let Some(next2) = self.nth(2) {
-                                    if let Token::Identifier(id) = next2.clone().value {
-                                        identifier = PositionedIdentifier::new(
-                                            Identifier::with_parent(identifier, id.clone()),
-                                            start,
-                                            next2.end
-                                        );
-                                        self.advance_x(2);
-                                    } else {
-                                        return Ok(current.convert(ValueType::Custom(identifier)));
-                                    }
-                                } else {
-                                    return Ok(current.convert(ValueType::Custom(identifier)));
-                                }
-                            }
-                            _ => return Ok(current.convert(ValueType::Custom(identifier)))
-                        }
-                    }
-                }
+                return self.parse_custom_type(identifier, current.start);
             },
             Token::QuestionMark => { // [?][Type]
                 let start = current.start;
@@ -852,43 +890,7 @@ impl Parser {
             }
             Token::LeftParenthesis => {
                 let start = current.start;
-                self.advance();
-                let mut parts = Vec::new();
-                let mut allow_next = true;
-                let end;
-                loop {
-                    let current = self.expect_current(Some(Token::RightParenthesis))?;
-                    match current.value {
-                        Token::Comma => {
-                            if !allow_next {
-                                allow_next = true;
-                                self.advance();
-                            } else {
-                                return Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string())));
-                            }
-                        }
-                        Token::RightParenthesis => {
-                            if !allow_next || parts.is_empty() {
-                                end = current.end;
-                                break;
-                            } else {
-                                return Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string())));
-                            }
-                        }
-                        _ => {
-                            let value_type = self.parse_type()?;
-                            self.advance();
-                            parts.push(value_type);
-                            allow_next = false;
-                        }
-                    }
-                }
-
-                return Ok(PositionedValueType::new(
-                    ValueType::Tuple(parts),
-                    start,
-                    end,
-                ));
+                return self.parse_tuple_type(start);
             }
             _ => Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string()))),
         }
