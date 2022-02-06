@@ -11,6 +11,16 @@ group Operations {
 }
 
 fn main(): i32 {
+    if (a) {
+        a = a + 1;
+    } else if (b) {
+        b = b + 1;
+    } elif (c) {
+        c = c + 1;
+    } else {
+        d = d + 1;
+    }
+
     let a: A::test;
     Operations::add::<i32>(-1, 0);
     @uncheck {

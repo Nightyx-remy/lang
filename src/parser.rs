@@ -952,8 +952,21 @@ impl Parser {
     }
 
     fn parse_body(&mut self) -> Result<Vec<PositionedNode>, PositionedParserError> {
+        self.expect_token(Token::LeftCurlyBracket)?;
+        self.advance();
+        let mut nodes = Vec::new();
 
-        todo!()
+        loop {
+            let current = self.expect_current(Some(Token::RightCurlyBracket))?;
+            if current.value == Token::RightCurlyBracket {
+                break;
+            } else {
+                let node = self.parse_current()?;
+                nodes.push(node);
+            }
+        }
+
+        return Ok(nodes);
     }
 
     fn parse_function_def(&mut self, access: Option<PositionedAccessModifier>, global: Option<EmptyPositioned>, start: Position) -> Result<PositionedNode, PositionedParserError> {
@@ -1079,21 +1092,9 @@ impl Parser {
         };
 
         // Body
-        let end;
-        self.expect_token(Token::LeftCurlyBracket)?;
+        let body = self.parse_body()?;
+        let end = self.get_current().unwrap().end;
         self.advance();
-        let mut body = vec![];
-        loop {
-            current = self.expect_current(Some(Token::RightCurlyBracket))?.clone();
-            if current.value == Token::RightCurlyBracket {
-                end = current.end;
-                self.advance();
-                break;
-            } else {
-                let node = self.parse_current()?;
-                body.push(node);
-            }
-        }
 
         return Ok(PositionedNode::new(
             Node::FunctionDefinition {
@@ -1265,21 +1266,9 @@ impl Parser {
         }
 
         // If Body
-        self.expect_token(Token::LeftCurlyBracket)?;
+        let body = self.parse_body()?;
+        let mut end = self.get_current().unwrap().end;
         self.advance();
-        let mut body = vec![];
-        let mut end;
-        loop {
-            current = self.expect_current(Some(Token::RightCurlyBracket))?;
-            if current.value == Token::RightCurlyBracket {
-                end = current.end;
-                self.advance();
-                break;
-            } else {
-                let node = self.parse_current()?;
-                body.push(node);
-            }
-        }
 
         let if_condition = ConditionBranch {
             condition,
@@ -1295,27 +1284,13 @@ impl Parser {
                     Token::Keyword(Keyword::Else) => {
                         self.advance();
                         current = self.expect_current(Some(Token::LeftCurlyBracket))?;
-                        match current.value {
-                            Token::LeftCurlyBracket => {
-                                self.advance();
-                                let mut current;
-                                loop {
-                                    current = self.expect_current(Some(Token::RightCurlyBracket))?.clone();
-                                    if current.value == Token::RightCurlyBracket {
-                                        end = current.end;
-                                        self.advance();
-                                        break;
-                                    } else {
-                                        let node = self.parse_current()?;
-                                        else_body.push(node);
-                                    }
-                                }
-                                break;
-                            }
-                            Token::Keyword(Keyword::If) => {
-                                self.advance();
-                            }
-                            _ => return Err(Self::unexpected_token(current.clone(), Some(Token::LeftCurlyBracket))),
+                        if current.value == Token::Keyword(Keyword::If) {
+                            self.advance();
+                        } else {
+                            else_body = self.parse_body()?;
+                            end = self.get_current().unwrap().end;
+                            self.advance();
+                            break;
                         }
                     }
                     Token::Keyword(Keyword::Elif) => {
@@ -1347,21 +1322,9 @@ impl Parser {
                 }
 
                 // Body
-                self.expect_token(Token::LeftCurlyBracket)?;
+                let body = self.parse_body()?;
+                end = self.get_current().unwrap().end;
                 self.advance();
-                let mut body = vec![];
-                let mut current;
-                loop {
-                    current = self.expect_current(Some(Token::RightCurlyBracket))?.clone();
-                    if current.value == Token::RightCurlyBracket {
-                        end = current.end;
-                        self.advance();
-                        break;
-                    } else {
-                        let node = self.parse_current()?;
-                        body.push(node);
-                    }
-                }
 
                 let branch = ConditionBranch {
                     condition,
@@ -1415,22 +1378,9 @@ impl Parser {
         };
 
         // Body
-        self.expect_token(Token::LeftCurlyBracket)?;
+        let body = self.parse_body()?;
+        let end = self.get_current().unwrap().end;
         self.advance();
-        let mut body = vec![];
-        let mut current;
-        let end;
-        loop {
-            current = self.expect_current(Some(Token::RightCurlyBracket))?.clone();
-            if current.value == Token::RightCurlyBracket {
-                end = current.end;
-                self.advance();
-                break;
-            } else {
-                let node = self.parse_current()?;
-                body.push(node);
-            }
-        }
 
         return Ok(PositionedNode::new(
             Node::While(Box::new(ConditionBranch {
@@ -1465,22 +1415,9 @@ impl Parser {
         self.advance();
 
         // Body
-        self.expect_token(Token::LeftCurlyBracket)?;
+        let body = self.parse_body()?;
+        let end = self.get_current().unwrap().end;
         self.advance();
-        let mut body = vec![];
-        let mut current;
-        let end;
-        loop {
-            current = self.expect_current(Some(Token::RightCurlyBracket))?.clone();
-            if current.value == Token::RightCurlyBracket {
-                end = current.end;
-                self.advance();
-                break;
-            } else {
-                let node = self.parse_current()?;
-                body.push(node);
-            }
-        }
 
         return Ok(PositionedNode::new(
             Node::ForEach {
@@ -1612,26 +1549,16 @@ impl Parser {
         return if let Token::Identifier(name) = current.value.clone() {
             let id = current.convert(name);
             self.advance();
-            self.expect_token(Token::LeftCurlyBracket)?;
-            self.advance();
-            let mut nodes = Vec::new();
-            loop {
-                current = self.expect_current(Some(Token::RightCurlyBracket))?.clone();
-                if current.value == Token::RightCurlyBracket {
-                    self.advance();
-                    break;
-                } else {
-                    let node = self.parse_current()?;
-                    nodes.push(node);
-                }
-            }
 
-            let end = current.end;
+            // Body
+            let body = self.parse_body()?;
+            let end = self.get_current().unwrap().end;
+            self.advance();
 
             Ok(PositionedNode::new(
                 Node::Group {
                     name: id,
-                    body: nodes
+                    body,
                 },
                 start,
                 end,
@@ -1844,23 +1771,14 @@ impl Parser {
 
     fn parse_uncheck(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
         self.advance();
-        self.expect_token(Token::LeftCurlyBracket)?;
+
+        // Body
+        let body = self.parse_body()?;
+        let end = self.get_current().unwrap().end;
         self.advance();
-        let mut nodes = Vec::new();
-        let mut current;
-        loop {
-            current = self.expect_current(Some(Token::RightCurlyBracket))?.clone();
-            if current.value == Token::RightCurlyBracket {
-                self.advance();
-                break;
-            } else {
-                let node = self.parse_current()?;
-                nodes.push(node);
-            }
-        }
-        let end = current.end;
+
         return Ok(PositionedNode::new(
-            Node::CIUncheck(nodes),
+            Node::CIUncheck(body),
             start,
             end
         ));
