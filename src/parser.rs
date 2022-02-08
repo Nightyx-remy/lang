@@ -1092,8 +1092,17 @@ impl Parser {
         };
 
         // Body
-        let body = self.parse_body()?;
-        let end = self.get_current().unwrap().end;
+        let current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+        let body;
+        let end;
+        if current.value == Token::LeftCurlyBracket {
+            body = Some(self.parse_body()?);
+            end = self.get_current().unwrap().end;
+        } else {
+            self.expect_token(Token::Semicolon)?;
+            body = None;
+            end = current.end;
+        }
         self.advance();
 
         return Ok(PositionedNode::new(

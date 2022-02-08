@@ -41,7 +41,7 @@ pub enum Node {
         generics: Vec<PositionedString>,
         parameters: Vec<PositionedParameterDef>,
         return_type: Option<PositionedValueType>,
-        body: Vec<PositionedNode>,
+        body: Option<Vec<PositionedNode>>,
         access: Option<PositionedAccessModifier>,
         global: Option<EmptyPositioned>,
     },
@@ -179,13 +179,15 @@ impl Display for Node {
                 if let Some(return_type) = return_type {
                     write!(f, ": {}", return_type)?;
                 }
-                write!(f, " {{")?;
-                for node in body {
-                    for line in node.to_string().lines() {
-                        write!(f, "\n\t{}", line)?;
+                if let Some(body) = body {
+                    write!(f, " {{")?;
+                    for node in body {
+                        for line in node.to_string().lines() {
+                            write!(f, "\n\t{}", line)?;
+                        }
                     }
+                    write!(f, "\n}}")?;
                 }
-                write!(f, "\n}}")?;
             }
             Node::FunctionCall { name, generics, parameters } => {
                 write!(f, "{}", name)?;

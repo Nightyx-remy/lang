@@ -12,6 +12,8 @@ group Operations {
 
 prot group test {
 
+    fn empty(value: i32);
+
 }
 
 fn main(): i32 {
