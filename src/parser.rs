@@ -321,6 +321,7 @@ impl Parser {
                     Keyword::Null => Ok(current.convert(Node::Value(ValueNode::Null))),
                     Keyword::True => Ok(current.convert(Node::Value(ValueNode::Bool(true)))),
                     Keyword::False => Ok(current.convert(Node::Value(ValueNode::Bool(false)))),
+                    Keyword::SELF => Ok(current.convert(Node::Value(ValueNode::SELF))),
                     _ => Err(Self::unexpected_token(current.clone(), None)),
                 }
             }
@@ -335,6 +336,22 @@ impl Parser {
         loop {
             if let Some(current) = self.get_current() {
                 match current.value {
+                    Token::Dot => {
+                        let operator = current.convert(Operator::Accessing);
+                        self.advance();
+                        let right = self.parse_value()?;
+                        let start = left.start;
+                        let end = right.end;
+                        left = PositionedNode::new(
+                            Node::BinaryOp {
+                                left: Box::new(left),
+                                operator,
+                                right: Box::new(right)
+                            },
+                            start,
+                            end
+                        );
+                    }
                     Token::LeftBracket => {
                         let start = left.start;
                         let op_start = current.start;
@@ -974,6 +991,8 @@ impl Parser {
         let mut current = self.expect_current_str(Some("Identifier".to_string()))?.clone();
         let name = if let Token::Identifier(name) = &current.value {
             current.convert(name.clone())
+        } else if current.value == Token::Keyword(Keyword::New) {
+            current.convert("new".to_string())
         } else {
             return Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())));
         };
@@ -1578,6 +1597,70 @@ impl Parser {
         };
     }
 
+    fn parse_class(&mut self, access: Option<PositionedAccessModifier>, start: Position) -> Result<PositionedNode, PositionedParserError> {
+        let mut current = self.expect_current_str(Some("Identifier".to_string()))?;
+        return if let Token::Identifier(name) = current.value.clone() {
+            let name = current.convert(name);
+            self.advance();
+            current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+
+            // Extends
+            let mut extends = Vec::new();
+            if current.value == Token::Colon {
+                self.advance();
+                let mut allow_next = true;
+                loop {
+                    current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+                    match current.value {
+                        Token::Plus => {
+                            if !allow_next {
+                                allow_next = true;
+                                self.advance();
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string())));
+                            }
+                        }
+                        Token::LeftCurlyBracket => {
+                            if !allow_next {
+                                break;
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string())));
+                            }
+                        }
+                        _ => {
+                            if allow_next {
+                                let extend = self.parse_type()?;
+                                extends.push(extend);
+                                self.advance();
+                                allow_next = false;
+                            } else {
+                                return Err(Self::unexpected_token(current.clone(), Some(Token::Plus)));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Body
+            let body = self.parse_body()?;
+            let end = self.get_current().unwrap().end;
+            self.advance();
+
+            Ok(PositionedNode::new(
+                Node::Class {
+                    name,
+                    extends,
+                    access,
+                    body
+                },
+                start,
+                end
+            ))
+        } else {
+            Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())))?
+        }
+    }
+
     fn process_modifier(&mut self, access: Option<PositionedAccessModifier>, global: Option<EmptyPositioned>, start: Position) -> Result<PositionedNode, PositionedParserError> {
         let current = self.expect_current(None)?.clone();
         return match current.value {
@@ -1621,6 +1704,15 @@ impl Parser {
                 if global.is_none() {
                     self.advance();
                     self.parse_group(start, access)
+                } else {
+                    Err(global.unwrap().convert(ParserError::UnexpectedToken(Token::Keyword(Keyword::Global), None)))
+                }
+            }
+            // OOP Structures
+            Token::Keyword(Keyword::Class) => {
+                if global.is_none() {
+                    self.advance();
+                    self.parse_class(access, start)
                 } else {
                     Err(global.unwrap().convert(ParserError::UnexpectedToken(Token::Keyword(Keyword::Global), None)))
                 }
@@ -1687,7 +1779,7 @@ impl Parser {
                 self.advance();
                 return Ok(node);
             }
-            Keyword::Unwrap | Keyword::Ref | Keyword::Deref | Keyword::Not | Keyword::Null | Keyword::True | Keyword::False => {
+            Keyword::SELF | Keyword::Unwrap | Keyword::Ref | Keyword::Deref | Keyword::Not | Keyword::Null | Keyword::True | Keyword::False => {
                 let node = self.parse_expr()?;
                 self.expect_token(Token::Semicolon)?;
                 self.advance();
@@ -1741,7 +1833,8 @@ impl Parser {
                 return self.parse_group(start, None);
             }
             Keyword::Class => {
-                todo!()
+                self.advance();
+                return self.parse_class(None, start);
             }
             Keyword::SELF => {
                 todo!()

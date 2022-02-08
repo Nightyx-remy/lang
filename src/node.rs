@@ -77,6 +77,7 @@ pub enum Node {
         body: Vec<PositionedNode>,
         access: Option<PositionedAccessModifier>
     },
+    // Compiler Instruction
     CICall {
         language: PositionedString,
         function: Box<PositionedNode>,
@@ -101,7 +102,27 @@ pub enum Node {
     },
     CIFree {
         name: PositionedString
-    }
+    },
+    // OOP Structures
+    Class {
+        name: PositionedString,
+        extends: Vec<PositionedValueType>,
+        body: Vec<PositionedNode>,
+        access: Option<PositionedAccessModifier>
+    },
+    Interface {
+        name: PositionedString,
+        extends: Vec<PositionedValueType>,
+        body: Vec<PositionedNode>,
+        access: Option<PositionedAccessModifier>
+    },
+    Prototype {
+        name: PositionedString,
+        extends: Vec<PositionedValueType>,
+        body: Vec<PositionedNode>,
+        access: Option<PositionedAccessModifier>
+    },
+    // TODO: Enumeration
 }
 
 impl Display for Node {
@@ -114,6 +135,7 @@ impl Display for Node {
                 match operator.value {
                     Operator::Indexing => write!(f, "({}[{}])", left, right)?,
                     Operator::SafeIndexing => write!(f, "({}?[{}])", left, right)?,
+                    Operator::Accessing => write!(f, "{}.{}", left, right)?,
                     _ => write!(f, "({} {} {})", left, operator, right)?
                 }
             },
@@ -354,6 +376,41 @@ impl Display for Node {
             Node::CIInclude { language, library } => write!(f, "@include({}, {})", language, library)?,
             Node::CILifetime { name, expr } => write!(f, "@lifetime({}) {}", name, expr)?,
             Node::CIFree { name } => write!(f, "@free({})", name)?,
+            Node::Class { name, extends, body, access } => {
+                // Access
+                if let Some(access) = access {
+                    write!(f, "{}", access)?;
+                } else {
+                    write!(f, "{}", AccessModifier::Private)?;
+                }
+
+                // Class
+                write!(f, " class {}", name)?;
+
+                // Type
+                if !extends.is_empty() {
+                    write!(f, ": ")?;
+                    let mut index = 0;
+                    for extend in extends {
+                        if index != 0 {
+                            write!(f, " + ")?;
+                        }
+                        write!(f, "{}", extend)?;
+                        index += 1;
+                    }
+                }
+
+                // Body
+                write!(f, " {{")?;
+                for node in body {
+                    for line in node.to_string().lines() {
+                        write!(f, "\n\t{}", line)?;
+                    }
+                }
+                write!(f, "\n}}")?;
+            }
+            Node::Interface { .. } => {}
+            Node::Prototype { .. } => {}
         }
 
         Ok(())
@@ -439,6 +496,7 @@ pub enum ValueNode {
     Char(String),
     String(String),
     Bool(bool),
+    SELF,
     Type(ValueType),
     Array(Vec<PositionedNode>),
     Tuple(Vec<PositionedNode>),
@@ -458,6 +516,7 @@ impl Display for ValueNode {
             ValueNode::Char(value) => write!(f, "'{}'", value)?,
             ValueNode::String(value) => write!(f, "\"{}\"", value)?,
             ValueNode::Bool(value) => write!(f, "{}", value)?,
+            ValueNode::SELF => write!(f, "self")?,
             ValueNode::Type(value_type) => write!(f, "{}", value_type)?,
             ValueNode::Array(values) => {
                 write!(f, "{{")?;
@@ -673,7 +732,8 @@ pub enum Operator {
     // Object
     Is,                         // ?
     Exact,                      // ?
-    Extends                     // ?
+    Extends,                    // ?
+    Accessing,                  // 0
 }
 
 impl Display for Operator {
@@ -719,6 +779,7 @@ impl Display for Operator {
             Operator::Is => write!(f, "is")?,
             Operator::Exact => write!(f, "exact")?,
             Operator::Extends => write!(f, "extends")?,
+            Operator::Accessing => write!(f, ".")?,
         }
 
         Ok(())
