@@ -75,6 +75,7 @@ pub enum Node {
     Group {
         name: PositionedString,
         body: Vec<PositionedNode>,
+        access: Option<PositionedAccessModifier>
     },
     CICall {
         language: PositionedString,
@@ -298,8 +299,15 @@ impl Display for Node {
                 // Alias
                 write!(f, " alias {} = {}", name, value)?
             },
-            Node::Group { name, body } => {
-                write!(f, "group {} {{", name)?;
+            Node::Group { name, body, access } => {
+                // Access
+                if let Some(access) = access {
+                    write!(f, "{}", access)?;
+                } else {
+                    write!(f, "{}", AccessModifier::Private)?;
+                }
+
+                write!(f, " group {} {{", name)?;
 
                 for node in body {
                     for line in node.to_string().lines() {

@@ -1544,7 +1544,7 @@ impl Parser {
         ));
     }
 
-    fn parse_group(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
+    fn parse_group(&mut self, start: Position, access: Option<PositionedAccessModifier>) -> Result<PositionedNode, PositionedParserError> {
         let mut current = self.expect_current_str(Some("Identifier".to_string()))?.clone();
         return if let Token::Identifier(name) = current.value.clone() {
             let id = current.convert(name);
@@ -1559,6 +1559,7 @@ impl Parser {
                 Node::Group {
                     name: id,
                     body,
+                    access
                 },
                 start,
                 end,
@@ -1605,6 +1606,15 @@ impl Parser {
             Token::Keyword(Keyword::Fn) => {
                 self.advance();
                 self.parse_function_def(access, global, start)
+            }
+            // Group
+            Token::Keyword(Keyword::Group) => {
+                if global.is_none() {
+                    self.advance();
+                    self.parse_group(start, access)
+                } else {
+                    Err(global.unwrap().convert(ParserError::UnexpectedToken(Token::Keyword(Keyword::Global), None)))
+                }
             }
             // Access
             Token::Keyword(Keyword::Pub) => {
@@ -1719,7 +1729,7 @@ impl Parser {
             }
             Keyword::Group => {
                 self.advance();
-                return self.parse_group(start);
+                return self.parse_group(start, None);
             }
             Keyword::Class => {
                 todo!()

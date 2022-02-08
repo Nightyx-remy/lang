@@ -10,6 +10,10 @@ group Operations {
 
 }
 
+prot group test {
+
+}
+
 fn main(): i32 {
     @lifetime(A) var a = 33;
 
