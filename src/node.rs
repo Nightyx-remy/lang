@@ -409,8 +409,72 @@ impl Display for Node {
                 }
                 write!(f, "\n}}")?;
             }
-            Node::Interface { .. } => {}
-            Node::Prototype { .. } => {}
+            Node::Interface { name, extends, body, access } => {
+                // Access
+                if let Some(access) = access {
+                    write!(f, "{}", access)?;
+                } else {
+                    write!(f, "{}", AccessModifier::Private)?;
+                }
+
+                // Class
+                write!(f, " interface {}", name)?;
+
+                // Type
+                if !extends.is_empty() {
+                    write!(f, ": ")?;
+                    let mut index = 0;
+                    for extend in extends {
+                        if index != 0 {
+                            write!(f, " + ")?;
+                        }
+                        write!(f, "{}", extend)?;
+                        index += 1;
+                    }
+                }
+
+                // Body
+                write!(f, " {{")?;
+                for node in body {
+                    for line in node.to_string().lines() {
+                        write!(f, "\n\t{}", line)?;
+                    }
+                }
+                write!(f, "\n}}")?;
+            }
+            Node::Prototype { name, extends, body, access } => {
+                // Access
+                if let Some(access) = access {
+                    write!(f, "{}", access)?;
+                } else {
+                    write!(f, "{}", AccessModifier::Private)?;
+                }
+
+                // Class
+                write!(f, " prototype {}", name)?;
+
+                // Type
+                if !extends.is_empty() {
+                    write!(f, ": ")?;
+                    let mut index = 0;
+                    for extend in extends {
+                        if index != 0 {
+                            write!(f, " + ")?;
+                        }
+                        write!(f, "{}", extend)?;
+                        index += 1;
+                    }
+                }
+
+                // Body
+                write!(f, " {{")?;
+                for node in body {
+                    for line in node.to_string().lines() {
+                        write!(f, "\n\t{}", line)?;
+                    }
+                }
+                write!(f, "\n}}")?;
+            }
         }
 
         Ok(())

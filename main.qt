@@ -1,14 +1,28 @@
 # [TodoList]
-# - Interface
+# self() / super()
 # - Prototype
 # - Enumeration
 
+pub intf Aged {
+
+    fn get_age(): u32;
+
+}
+
+pub proto Named {
+    prot var name: str;
+}
+
 class Person: Aged + Named {
-    var name: str;
     var age: u32;
 
     fn new(name: str, age: u32): Person {
-        println("Creating new person");
+        self.name = name;
+        self.age = age;
+    }
+
+    fn get_age(): u32 {
+        return self.age;
     }
 
     fn to_string(): str {

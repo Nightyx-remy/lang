@@ -1661,6 +1661,134 @@ impl Parser {
         }
     }
 
+    fn parse_interface(&mut self, access: Option<PositionedAccessModifier>, start: Position) -> Result<PositionedNode, PositionedParserError> {
+        let mut current = self.expect_current_str(Some("Identifier".to_string()))?;
+        return if let Token::Identifier(name) = current.value.clone() {
+            let name = current.convert(name);
+            self.advance();
+            current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+
+            // Extends
+            let mut extends = Vec::new();
+            if current.value == Token::Colon {
+                self.advance();
+                let mut allow_next = true;
+                loop {
+                    current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+                    match current.value {
+                        Token::Plus => {
+                            if !allow_next {
+                                allow_next = true;
+                                self.advance();
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string())));
+                            }
+                        }
+                        Token::LeftCurlyBracket => {
+                            if !allow_next {
+                                break;
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string())));
+                            }
+                        }
+                        _ => {
+                            if allow_next {
+                                let extend = self.parse_type()?;
+                                extends.push(extend);
+                                self.advance();
+                                allow_next = false;
+                            } else {
+                                return Err(Self::unexpected_token(current.clone(), Some(Token::Plus)));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Body
+            let body = self.parse_body()?;
+            let end = self.get_current().unwrap().end;
+            self.advance();
+
+            Ok(PositionedNode::new(
+                Node::Interface {
+                    name,
+                    extends,
+                    access,
+                    body
+                },
+                start,
+                end
+            ))
+        } else {
+            Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())))?
+        }
+    }
+
+    fn parse_prototype(&mut self, access: Option<PositionedAccessModifier>, start: Position) -> Result<PositionedNode, PositionedParserError> {
+        let mut current = self.expect_current_str(Some("Identifier".to_string()))?;
+        return if let Token::Identifier(name) = current.value.clone() {
+            let name = current.convert(name);
+            self.advance();
+            current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+
+            // Extends
+            let mut extends = Vec::new();
+            if current.value == Token::Colon {
+                self.advance();
+                let mut allow_next = true;
+                loop {
+                    current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+                    match current.value {
+                        Token::Plus => {
+                            if !allow_next {
+                                allow_next = true;
+                                self.advance();
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string())));
+                            }
+                        }
+                        Token::LeftCurlyBracket => {
+                            if !allow_next {
+                                break;
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Type".to_string())));
+                            }
+                        }
+                        _ => {
+                            if allow_next {
+                                let extend = self.parse_type()?;
+                                extends.push(extend);
+                                self.advance();
+                                allow_next = false;
+                            } else {
+                                return Err(Self::unexpected_token(current.clone(), Some(Token::Plus)));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Body
+            let body = self.parse_body()?;
+            let end = self.get_current().unwrap().end;
+            self.advance();
+
+            Ok(PositionedNode::new(
+                Node::Prototype {
+                    name,
+                    extends,
+                    access,
+                    body
+                },
+                start,
+                end
+            ))
+        } else {
+            Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())))?
+        }
+    }
+
     fn process_modifier(&mut self, access: Option<PositionedAccessModifier>, global: Option<EmptyPositioned>, start: Position) -> Result<PositionedNode, PositionedParserError> {
         let current = self.expect_current(None)?.clone();
         return match current.value {
@@ -1713,6 +1841,22 @@ impl Parser {
                 if global.is_none() {
                     self.advance();
                     self.parse_class(access, start)
+                } else {
+                    Err(global.unwrap().convert(ParserError::UnexpectedToken(Token::Keyword(Keyword::Global), None)))
+                }
+            }
+            Token::Keyword(Keyword::Intf) => {
+                if global.is_none() {
+                    self.advance();
+                    self.parse_interface(access, start)
+                } else {
+                    Err(global.unwrap().convert(ParserError::UnexpectedToken(Token::Keyword(Keyword::Global), None)))
+                }
+            }
+            Token::Keyword(Keyword::Proto) => {
+                if global.is_none() {
+                    self.advance();
+                    self.parse_prototype(access, start)
                 } else {
                     Err(global.unwrap().convert(ParserError::UnexpectedToken(Token::Keyword(Keyword::Global), None)))
                 }
@@ -1836,16 +1980,15 @@ impl Parser {
                 self.advance();
                 return self.parse_class(None, start);
             }
-            Keyword::SELF => {
-                todo!()
-            }
-            Keyword::New => {
-                todo!()
-            }
             Keyword::Intf => {
-                todo!()
+                self.advance();
+                return self.parse_interface(None, start);
             }
             Keyword::Proto => {
+                self.advance();
+                return self.parse_prototype(None, start);
+            }
+            Keyword::New => {
                 todo!()
             }
             Keyword::Enum => {
