@@ -1,35 +1,25 @@
 # [TodoList]
-# self() / super()
-# - Prototype
 # - Enumeration
 
-pub intf Aged {
+pub class List<T> {
+    var data: &T;
+    var size: usize;
+    var length: usize;
 
-    fn get_age(): u32;
-
-}
-
-pub proto Named {
-    prot var name: str;
-}
-
-class Person: Aged + Named {
-    var age: u32;
-
-    fn new(name: str, age: u32): Person {
-        self.name = name;
-        self.age = age;
+    pub fn get_length(): usize {
+        return self.length;
     }
 
-    fn get_age(): u32 {
-        return self.age;
-    }
+    pub fn push(data: T) {
+        while (self.length >= self.size) {
+            self.size = self.size * 2;
+        }
 
-    fn to_string(): str {
-        println("{} is {} years old", self.name, self.age);
+        @call("c") realloc(self.data, @call("c") sizeof(T) * self.size);
     }
 }
 
 fn main(): i32 {
-
+    var my_list = @generic(i32) new List();
+    var my_list = new List::<i32>();
 }

@@ -106,18 +106,21 @@ pub enum Node {
     // OOP Structures
     Class {
         name: PositionedString,
+        generics: Vec<PositionedString>,
         extends: Vec<PositionedValueType>,
         body: Vec<PositionedNode>,
         access: Option<PositionedAccessModifier>
     },
     Interface {
         name: PositionedString,
+        generics: Vec<PositionedString>,
         extends: Vec<PositionedValueType>,
         body: Vec<PositionedNode>,
         access: Option<PositionedAccessModifier>
     },
     Prototype {
         name: PositionedString,
+        generics: Vec<PositionedString>,
         extends: Vec<PositionedValueType>,
         body: Vec<PositionedNode>,
         access: Option<PositionedAccessModifier>
@@ -376,7 +379,7 @@ impl Display for Node {
             Node::CIInclude { language, library } => write!(f, "@include({}, {})", language, library)?,
             Node::CILifetime { name, expr } => write!(f, "@lifetime({}) {}", name, expr)?,
             Node::CIFree { name } => write!(f, "@free({})", name)?,
-            Node::Class { name, extends, body, access } => {
+            Node::Class { name, generics, extends, body, access } => {
                 // Access
                 if let Some(access) = access {
                     write!(f, "{}", access)?;
@@ -387,6 +390,20 @@ impl Display for Node {
                 // Class
                 write!(f, " class {}", name)?;
 
+                // Generics
+                if !generics.is_empty() {
+                    write!(f, "<")?;
+                    let mut index = 0;
+                    for generic in generics.iter() {
+                        if index != 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", generic)?;
+                        index += 1;
+                    }
+                    write!(f, ">")?;
+                }
+
                 // Type
                 if !extends.is_empty() {
                     write!(f, ": ")?;
@@ -409,7 +426,7 @@ impl Display for Node {
                 }
                 write!(f, "\n}}")?;
             }
-            Node::Interface { name, extends, body, access } => {
+            Node::Interface { name, generics, extends, body, access } => {
                 // Access
                 if let Some(access) = access {
                     write!(f, "{}", access)?;
@@ -420,6 +437,20 @@ impl Display for Node {
                 // Class
                 write!(f, " interface {}", name)?;
 
+                // Generics
+                if !generics.is_empty() {
+                    write!(f, "<")?;
+                    let mut index = 0;
+                    for generic in generics.iter() {
+                        if index != 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", generic)?;
+                        index += 1;
+                    }
+                    write!(f, ">")?;
+                }
+
                 // Type
                 if !extends.is_empty() {
                     write!(f, ": ")?;
@@ -442,7 +473,7 @@ impl Display for Node {
                 }
                 write!(f, "\n}}")?;
             }
-            Node::Prototype { name, extends, body, access } => {
+            Node::Prototype { name, generics, extends, body, access } => {
                 // Access
                 if let Some(access) = access {
                     write!(f, "{}", access)?;
@@ -452,6 +483,20 @@ impl Display for Node {
 
                 // Class
                 write!(f, " prototype {}", name)?;
+
+                // Generics
+                if !generics.is_empty() {
+                    write!(f, "<")?;
+                    let mut index = 0;
+                    for generic in generics.iter() {
+                        if index != 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", generic)?;
+                        index += 1;
+                    }
+                    write!(f, ">")?;
+                }
 
                 // Type
                 if !extends.is_empty() {

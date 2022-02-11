@@ -303,6 +303,78 @@ impl Parser {
         return Ok(identifier.clone().convert(Node::VariableCall { name: identifier }));
     }
 
+    fn parse_new(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
+        self.advance();
+
+        let mut current = self.expect_current_str(Some("Identifier".to_string()))?.clone();
+        if let Token::Identifier(name) = current.value.clone() {
+            let mut identifier = current.convert(Identifier::root(name));
+            self.advance();
+            let mut allow_next = false;
+            loop {
+                current = self.expect_current(Some(Token::LeftParenthesis))?.clone();
+                match current.value.clone() {
+                    Token::DoubleColon => {
+                        if !allow_next {
+                            allow_next = true;
+                            self.advance();
+                        } else {
+                            return Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())));
+                        }
+                    }
+                    Token::LeftAngle => {
+                        return if allow_next {
+                            let id_start = identifier.start;
+                            let id_end = identifier.end;
+                            identifier = PositionedIdentifier::new(
+                                Identifier::with_parent(identifier, "new".to_string()),
+                                id_start,
+                                id_end
+                            );
+                            let node = self.parse_function_call(identifier, start);
+                            self.rewind();
+                            node
+                        } else {
+                            Err(Self::unexpected_token(current.clone(), Some(Token::DoubleColon)))
+                        }
+                    }
+                    Token::LeftParenthesis => {
+                        return if !allow_next {
+                            let id_start = identifier.start;
+                            let id_end = identifier.end;
+                            identifier = PositionedIdentifier::new(
+                                Identifier::with_parent(identifier, "new".to_string()),
+                                id_start,
+                                id_end
+                            );
+                            let node = self.parse_function_call(identifier, start);
+                            self.rewind();
+                            node
+                        } else {
+                            Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())))
+                        }
+                    }
+                    Token::Identifier(name) => {
+                        if allow_next {
+                            let id_start = identifier.start;
+                            identifier = PositionedIdentifier::new(
+                                Identifier::with_parent(identifier, name),
+                                id_start,
+                                current.end
+                            );
+                            self.advance();
+                        } else {
+                            return Err(Self::unexpected_token(current.clone(), Some(Token::DoubleColon)));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        } else {
+            return Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())));
+        }
+    }
+
     fn parse_value(&mut self) -> Result<PositionedNode, PositionedParserError> {
         let current = self.expect_current(None)?.clone();
         match current.value.clone() {
@@ -322,7 +394,39 @@ impl Parser {
                     Keyword::True => Ok(current.convert(Node::Value(ValueNode::Bool(true)))),
                     Keyword::False => Ok(current.convert(Node::Value(ValueNode::Bool(false)))),
                     Keyword::SELF => Ok(current.convert(Node::Value(ValueNode::SELF))),
+                    Keyword::Super => {
+                        let name = current.convert(Identifier::root("super".to_string()));
+                        let start = current.start;
+                        self.advance();
+                        let node = self.parse_function_call(name, start);
+                        self.rewind(); // Align with }
+                        return node;
+                    }
+                    Keyword::New => self.parse_new(current.start),
                     _ => Err(Self::unexpected_token(current.clone(), None)),
+                }
+            }
+            Token::At => {
+                let start = current.start;
+                self.advance();
+                let current = self.expect_current_str(Some("Compiler instruction".to_string()))?;
+                return if let Token::Keyword(keyword) = current.value {
+                    match keyword {
+                        Keyword::Call => {
+                            let node = self.parse_call(start);
+                            self.rewind(); // Align with )
+                            println!("aligned to: {}", self.get_current().unwrap());
+                            node
+                        },
+                        Keyword::Generic => {
+                            let node = self.parse_generic(start);
+                            self.rewind(); // Align with )
+                            node
+                        },
+                        _ => Err(Self::unexpected_token_str(current.clone(), Some("Compiler instruction".to_string()))),
+                    }
+                } else {
+                    Err(Self::unexpected_token_str(current.clone(), Some("Compiler instruction".to_string())))
                 }
             }
             _ => return Err(Self::unexpected_token_str(current.clone(), Some("Value".to_string()))),
@@ -1140,7 +1244,7 @@ impl Parser {
     }
 
     fn parse_function_call(&mut self, name: PositionedIdentifier, start: Position) -> Result<PositionedNode, PositionedParserError> {
-        let mut current = self.get_current().expect("#P1: Should not happen").clone();
+        let mut current = self.get_current().unwrap().clone();
         let mut generics = Vec::new();
         if current.value == Token::LeftAngle {
             self.advance();
@@ -1225,6 +1329,7 @@ impl Parser {
                             }
                         }
                         let expr = self.parse_expr()?;
+                        println!("Function {}, param n°: {}, current: {}", name, params.len(), self.get_current().unwrap());
                         let end = expr.end;
                         allow_next = false;
                         params.push(PositionedParameterCall::new(
@@ -1598,11 +1703,51 @@ impl Parser {
     }
 
     fn parse_class(&mut self, access: Option<PositionedAccessModifier>, start: Position) -> Result<PositionedNode, PositionedParserError> {
-        let mut current = self.expect_current_str(Some("Identifier".to_string()))?;
+        let mut current = self.expect_current_str(Some("Identifier".to_string()))?.clone();
         return if let Token::Identifier(name) = current.value.clone() {
             let name = current.convert(name);
             self.advance();
-            current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+            current = self.expect_current(Some(Token::LeftCurlyBracket))?.clone();
+
+            // Generics
+            let mut generics = Vec::new();
+            current = self.expect_current(Some(Token::LeftParenthesis))?.clone();
+            if current.value == Token::LeftAngle {
+                self.advance();
+                let mut allow_next = true;
+                loop {
+                    current = self.expect_current(Some(Token::RightAngle))?.clone();
+                    match current.value.clone() {
+                        Token::Comma => {
+                            if !allow_next {
+                                allow_next = true;
+                                self.advance();
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())));
+                            }
+                        }
+                        Token::Identifier(gen) => {
+                            if allow_next {
+                                let gen_id = current.convert(gen);
+                                self.advance();
+                                allow_next = false;
+                                generics.push(gen_id);
+                            } else {
+                                return Err(Self::unexpected_token(current.clone(), Some(Token::Comma)));
+                            }
+                        }
+                        Token::RightAngle => {
+                            if !allow_next || generics.is_empty() {
+                                self.advance();
+                                break;
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())));
+                            }
+                        }
+                        _ => return Err(Self::unexpected_token(current.clone(), Some(Token::RightAngle))),
+                    }
+                }
+            }
 
             // Extends
             let mut extends = Vec::new();
@@ -1610,7 +1755,7 @@ impl Parser {
                 self.advance();
                 let mut allow_next = true;
                 loop {
-                    current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+                    current = self.expect_current(Some(Token::LeftCurlyBracket))?.clone();
                     match current.value {
                         Token::Plus => {
                             if !allow_next {
@@ -1649,6 +1794,7 @@ impl Parser {
             Ok(PositionedNode::new(
                 Node::Class {
                     name,
+                    generics,
                     extends,
                     access,
                     body
@@ -1662,11 +1808,53 @@ impl Parser {
     }
 
     fn parse_interface(&mut self, access: Option<PositionedAccessModifier>, start: Position) -> Result<PositionedNode, PositionedParserError> {
-        let mut current = self.expect_current_str(Some("Identifier".to_string()))?;
+        let mut current = self.expect_current_str(Some("Identifier".to_string()))?.clone();
         return if let Token::Identifier(name) = current.value.clone() {
             let name = current.convert(name);
             self.advance();
-            current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+            current = self.expect_current(Some(Token::LeftCurlyBracket))?.clone();
+
+
+
+            // Generics
+            let mut generics = Vec::new();
+            current = self.expect_current(Some(Token::LeftParenthesis))?.clone();
+            if current.value == Token::LeftAngle {
+                self.advance();
+                let mut allow_next = true;
+                loop {
+                    current = self.expect_current(Some(Token::RightAngle))?.clone();
+                    match current.value.clone() {
+                        Token::Comma => {
+                            if !allow_next {
+                                allow_next = true;
+                                self.advance();
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())));
+                            }
+                        }
+                        Token::Identifier(gen) => {
+                            if allow_next {
+                                let gen_id = current.convert(gen);
+                                self.advance();
+                                allow_next = false;
+                                generics.push(gen_id);
+                            } else {
+                                return Err(Self::unexpected_token(current.clone(), Some(Token::Comma)));
+                            }
+                        }
+                        Token::RightAngle => {
+                            if !allow_next || generics.is_empty() {
+                                self.advance();
+                                break;
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())));
+                            }
+                        }
+                        _ => return Err(Self::unexpected_token(current.clone(), Some(Token::RightAngle))),
+                    }
+                }
+            }
 
             // Extends
             let mut extends = Vec::new();
@@ -1674,7 +1862,7 @@ impl Parser {
                 self.advance();
                 let mut allow_next = true;
                 loop {
-                    current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+                    current = self.expect_current(Some(Token::LeftCurlyBracket))?.clone();
                     match current.value {
                         Token::Plus => {
                             if !allow_next {
@@ -1713,6 +1901,7 @@ impl Parser {
             Ok(PositionedNode::new(
                 Node::Interface {
                     name,
+                    generics,
                     extends,
                     access,
                     body
@@ -1726,11 +1915,51 @@ impl Parser {
     }
 
     fn parse_prototype(&mut self, access: Option<PositionedAccessModifier>, start: Position) -> Result<PositionedNode, PositionedParserError> {
-        let mut current = self.expect_current_str(Some("Identifier".to_string()))?;
+        let mut current = self.expect_current_str(Some("Identifier".to_string()))?.clone();
         return if let Token::Identifier(name) = current.value.clone() {
             let name = current.convert(name);
             self.advance();
-            current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+            current = self.expect_current(Some(Token::LeftCurlyBracket))?.clone();
+
+            // Generics
+            let mut generics = Vec::new();
+            current = self.expect_current(Some(Token::LeftParenthesis))?.clone();
+            if current.value == Token::LeftAngle {
+                self.advance();
+                let mut allow_next = true;
+                loop {
+                    current = self.expect_current(Some(Token::RightAngle))?.clone();
+                    match current.value.clone() {
+                        Token::Comma => {
+                            if !allow_next {
+                                allow_next = true;
+                                self.advance();
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())));
+                            }
+                        }
+                        Token::Identifier(gen) => {
+                            if allow_next {
+                                let gen_id = current.convert(gen);
+                                self.advance();
+                                allow_next = false;
+                                generics.push(gen_id);
+                            } else {
+                                return Err(Self::unexpected_token(current.clone(), Some(Token::Comma)));
+                            }
+                        }
+                        Token::RightAngle => {
+                            if !allow_next || generics.is_empty() {
+                                self.advance();
+                                break;
+                            } else {
+                                return Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())));
+                            }
+                        }
+                        _ => return Err(Self::unexpected_token(current.clone(), Some(Token::RightAngle))),
+                    }
+                }
+            }
 
             // Extends
             let mut extends = Vec::new();
@@ -1738,7 +1967,7 @@ impl Parser {
                 self.advance();
                 let mut allow_next = true;
                 loop {
-                    current = self.expect_current(Some(Token::LeftCurlyBracket))?;
+                    current = self.expect_current(Some(Token::LeftCurlyBracket))?.clone();
                     match current.value {
                         Token::Plus => {
                             if !allow_next {
@@ -1777,6 +2006,7 @@ impl Parser {
             Ok(PositionedNode::new(
                 Node::Prototype {
                     name,
+                    generics,
                     extends,
                     access,
                     body
@@ -1923,7 +2153,7 @@ impl Parser {
                 self.advance();
                 return Ok(node);
             }
-            Keyword::SELF | Keyword::Unwrap | Keyword::Ref | Keyword::Deref | Keyword::Not | Keyword::Null | Keyword::True | Keyword::False => {
+            Keyword::New | Keyword::Super | Keyword::SELF | Keyword::Unwrap | Keyword::Ref | Keyword::Deref | Keyword::Not | Keyword::Null | Keyword::True | Keyword::False => {
                 let node = self.parse_expr()?;
                 self.expect_token(Token::Semicolon)?;
                 self.advance();
@@ -1988,9 +2218,6 @@ impl Parser {
                 self.advance();
                 return self.parse_prototype(None, start);
             }
-            Keyword::New => {
-                todo!()
-            }
             Keyword::Enum => {
                 todo!()
             }
@@ -2002,14 +2229,14 @@ impl Parser {
         self.advance();
         self.expect_token(Token::LeftParenthesis)?;
         self.advance();
-        let mut current = self.expect_current_str(Some("Identifier".to_string()))?.clone();
+        let mut current = self.expect_current_str(Some("String".to_string()))?.clone();
         return if let Token::String(language) = current.value.clone() {
             let language = current.convert(language);
             self.advance();
             self.expect_token(Token::RightParenthesis)?;
             self.advance();
-            let node = self.parse_expr()?;
-            let end = self.expect_token(Token::Semicolon)?.end;
+            let node = self.parse_value()?;
+            let end = node.end;
             self.advance();
             Ok(PositionedNode::new(
                 Node::CICall {
@@ -2195,9 +2422,9 @@ impl Parser {
         }
 
         current = self.expect_current(Some(Token::Keyword(Keyword::Fn)))?.clone();
-        let expr = self.parse_expr()?;
-        let end = self.expect_token(Token::Semicolon)?.end;
+        let expr = self.parse_value()?;
         self.advance();
+        let end = expr.end;
         return Ok(PositionedNode::new(
             Node::CIGeneric {
                 generics,
@@ -2264,12 +2491,17 @@ impl Parser {
         let current = self.expect_current_str(Some("Compiler instruction".to_string()))?;
         return if let Token::Keyword(keyword) = current.value {
             match keyword {
-                Keyword::Call => self.parse_call(start),
+                Keyword::Generic | Keyword::Call => {
+                    self.rewind(); // Align with '@'
+                    let node = self.parse_expr()?;
+                    self.expect_token(Token::Semicolon)?;
+                    self.advance();
+                    Ok(node)
+                },
                 Keyword::Uncheck => self.parse_uncheck(start),
                 Keyword::Unreachable => self.parse_unreachable(start),
                 Keyword::Import => self.parse_import(start),
                 Keyword::Include => self.parse_include(start),
-                Keyword::Generic => self.parse_generic(start),
                 Keyword::Lifetime => self.parse_lifetime(start),
                 Keyword::Free => self.parse_free(start),
                 _ => Err(Self::unexpected_token_str(current.clone(), Some("Compiler instruction".to_string()))),
@@ -2280,7 +2512,7 @@ impl Parser {
     }
 
     fn parse_current(&mut self) -> Result<PositionedNode, PositionedParserError> {
-        if let Some(current) = self.get_current() {
+        return if let Some(current) = self.get_current() {
             match current.value {
                 Token::Identifier(_) | Token::LeftParenthesis |
                 Token::Plus | Token::Minus | Token::ExclamationMark |
@@ -2288,15 +2520,15 @@ impl Parser {
                     let node = self.parse_expr()?;
                     self.expect_token(Token::Semicolon)?;
                     self.advance();
-                    return Ok(node);
+                    Ok(node)
                 },
-                Token::Keyword(keyword) => return self.process_keyword(keyword),
-                Token::Dollar => return self.parse_label(),
-                Token::At => return self.parse_compiler_instruction(current.start),
-                _ => panic!("Unexpected Token: {}", self.get_current().unwrap())
+                Token::Keyword(keyword) => self.process_keyword(keyword),
+                Token::Dollar => self.parse_label(),
+                Token::At => self.parse_compiler_instruction(current.start),
+                _ => Err(Self::unexpected_token(current.clone(), None)),
             }
         } else {
-            panic!("Unexpected Token: {}", self.get_current().unwrap())
+            Err(Self::unexpected_eof(None))
         }
     }
 

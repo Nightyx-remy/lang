@@ -1,3 +1,4 @@
+use std::process::exit;
 use crate::lexer::Lexer;
 use crate::parser::{Parser};
 
@@ -16,6 +17,7 @@ fn main() {
             for token in tokens.iter() {
                 println!("{}", token);
             }
+            println!();
 
             let str = lexer.free();
 
@@ -28,11 +30,13 @@ fn main() {
                 }
                 Err(err) => {
                     println!("{}", err.error(str.clone()));
+                    exit(-1);
                 }
             }
         }
         Err(err) => {
             println!("{}", err.error(lexer.src.clone()));
+            exit(-1);
         }
     }
 }

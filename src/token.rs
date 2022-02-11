@@ -253,6 +253,7 @@ pub enum Keyword {
     // Objects
     Class,
     SELF,                                   // Supposed to be Self but it's a reserved Keyword
+    Super,
     New,
     Intf,
     Proto,
@@ -323,6 +324,7 @@ impl Keyword {
             "group" => Some(Keyword::Group),
             "class" => Some(Keyword::Class),
             "self" => Some(Keyword::SELF),
+            "super" => Some(Keyword::Super),
             "new" => Some(Keyword::New),
             "intf" => Some(Keyword::Intf),
             "proto" => Some(Keyword::Proto),
@@ -384,6 +386,7 @@ impl Display for Keyword {
             Keyword::Group => write!(f, "group")?,
             Keyword::Class => write!(f, "class")?,
             Keyword::SELF => write!(f, "self")?,
+            Keyword::Super => write!(f, "super")?,
             Keyword::New => write!(f, "new")?,
             Keyword::Intf => write!(f, "intf")?,
             Keyword::Proto => write!(f, "proto")?,
