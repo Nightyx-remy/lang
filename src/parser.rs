@@ -303,76 +303,55 @@ impl Parser {
         return Ok(identifier.clone().convert(Node::VariableCall { name: identifier }));
     }
 
-    fn parse_new(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
+    fn parse_object_instantiation(&mut self, start: Position) -> Result<PositionedNode, PositionedParserError> {
+        self.advance();
+        let name = self.parse_type()?;
         self.advance();
 
-        let mut current = self.expect_current_str(Some("Identifier".to_string()))?.clone();
-        if let Token::Identifier(name) = current.value.clone() {
-            let mut identifier = current.convert(Identifier::root(name));
-            self.advance();
-            let mut allow_next = false;
-            loop {
-                current = self.expect_current(Some(Token::LeftParenthesis))?.clone();
-                match current.value.clone() {
-                    Token::DoubleColon => {
-                        if !allow_next {
-                            allow_next = true;
-                            self.advance();
-                        } else {
-                            return Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())));
-                        }
+        self.expect_token(Token::LeftParenthesis)?;
+        self.advance();
+        let mut parameters = Vec::new();
+        let mut allow_next = true;
+        let end;
+        loop {
+            let current = self.expect_current(Some(Token::RightParenthesis))?;
+            match current.value {
+                Token::Comma => {
+                    if !allow_next {
+                        allow_next = true;
+                        self.advance();
+                    } else {
+                        return Err(Self::unexpected_token_str(current.clone(), Some("Expression".to_string())));
                     }
-                    Token::LeftAngle => {
-                        return if allow_next {
-                            let id_start = identifier.start;
-                            let id_end = identifier.end;
-                            identifier = PositionedIdentifier::new(
-                                Identifier::with_parent(identifier, "new".to_string()),
-                                id_start,
-                                id_end
-                            );
-                            let node = self.parse_function_call(identifier, start);
-                            self.rewind();
-                            node
-                        } else {
-                            Err(Self::unexpected_token(current.clone(), Some(Token::DoubleColon)))
-                        }
+                }
+                Token::RightParenthesis => {
+                    if !allow_next || parameters.is_empty() {
+                        end = current.end;
+                        break;
+                    } else {
+                        return Err(Self::unexpected_token_str(current.clone(), Some("Expression".to_string())));
                     }
-                    Token::LeftParenthesis => {
-                        return if !allow_next {
-                            let id_start = identifier.start;
-                            let id_end = identifier.end;
-                            identifier = PositionedIdentifier::new(
-                                Identifier::with_parent(identifier, "new".to_string()),
-                                id_start,
-                                id_end
-                            );
-                            let node = self.parse_function_call(identifier, start);
-                            self.rewind();
-                            node
-                        } else {
-                            Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())))
-                        }
+                }
+                _ => {
+                    if allow_next {
+                        let value = self.parse_expr()?;
+                        parameters.push(value);
+                        allow_next = false;
+                    } else {
+                        return Err(Self::unexpected_token(current.clone(), Some(Token::Comma)));
                     }
-                    Token::Identifier(name) => {
-                        if allow_next {
-                            let id_start = identifier.start;
-                            identifier = PositionedIdentifier::new(
-                                Identifier::with_parent(identifier, name),
-                                id_start,
-                                current.end
-                            );
-                            self.advance();
-                        } else {
-                            return Err(Self::unexpected_token(current.clone(), Some(Token::DoubleColon)));
-                        }
-                    }
-                    _ => {}
                 }
             }
-        } else {
-            return Err(Self::unexpected_token_str(current.clone(), Some("Identifier".to_string())));
         }
+
+        return Ok(PositionedNode::new(
+            Node::ObjectInstantiation {
+                name,
+                parameters
+            },
+            start,
+            end
+        ));
     }
 
     fn parse_value(&mut self) -> Result<PositionedNode, PositionedParserError> {
@@ -402,7 +381,7 @@ impl Parser {
                         self.rewind(); // Align with }
                         return node;
                     }
-                    Keyword::New => self.parse_new(current.start),
+                    Keyword::New => self.parse_object_instantiation(current.start),
                     _ => Err(Self::unexpected_token(current.clone(), None)),
                 }
             }
@@ -898,21 +877,62 @@ impl Parser {
 
     fn parse_custom_type(&mut self, mut identifier: PositionedIdentifier, start: Position) -> Result<PositionedValueType, PositionedParserError> {
         if let Some(next) = self.nth(1) {
-            if next.value == Token::DoubleColon {
-                if let Some(next2) = self.nth(2) {
-                    if let Token::Identifier(id) = next2.value.clone() {
-                        identifier = PositionedIdentifier::new(
-                            Identifier::with_parent(identifier, id),
-                            start,
-                            next2.end
-                        );
-                        self.advance_x(2);
-                        return self.parse_custom_type(identifier, start);
+            match next.value {
+                Token::DoubleColon => {
+                    if let Some(next2) = self.nth(2) {
+                        match next2.value.clone() {
+                            Token::LeftAngle => {
+                                self.advance_x(3);
+                                let mut generics = vec![];
+                                loop {
+                                    let current = self.expect_current(Some(Token::RightAngle))?;
+                                    if current.value == Token::RightAngle {
+                                        return Ok(identifier.clone().convert(ValueType::Custom{
+                                            name: identifier,
+                                            generics
+                                        }));
+                                    } else {
+                                        generics.push(self.parse_type()?);
+                                        self.advance();
+                                    }
+                                }
+                            }
+                            Token::Identifier(id) => {
+                                identifier = PositionedIdentifier::new(
+                                    Identifier::with_parent(identifier, id),
+                                    start,
+                                    next2.end
+                                );
+                                self.advance_x(2);
+                                return self.parse_custom_type(identifier, start);
+                            }
+                            _ => {}
+                        }
                     }
                 }
+                Token::LeftAngle => {
+                    self.advance_x(2);
+                    let mut generics = vec![];
+                    loop {
+                        let current = self.expect_current(Some(Token::RightAngle))?;
+                        if current.value == Token::RightAngle {
+                            return Ok(identifier.clone().convert(ValueType::Custom{
+                                name: identifier,
+                                generics
+                            }));
+                        } else {
+                            generics.push(self.parse_type()?);
+                            self.advance();
+                        }
+                    }
+                }
+                _ => {}
             }
         }
-        return Ok(identifier.clone().convert(ValueType::Custom(identifier)));
+        return Ok(identifier.clone().convert(ValueType::Custom{
+            name: identifier,
+            generics: vec![]
+        }));
     }
 
     fn parse_tuple_type(&mut self, start: Position) -> Result<PositionedValueType, PositionedParserError> {

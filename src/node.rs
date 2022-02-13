@@ -125,6 +125,10 @@ pub enum Node {
         body: Vec<PositionedNode>,
         access: Option<PositionedAccessModifier>
     },
+    ObjectInstantiation {
+        name: PositionedValueType,
+        parameters: Vec<PositionedNode>,
+    }
     // TODO: Enumeration
 }
 
@@ -520,6 +524,19 @@ impl Display for Node {
                 }
                 write!(f, "\n}}")?;
             }
+            Node::ObjectInstantiation { name, parameters } => {
+                write!(f, "new {}", name)?;
+                write!(f, "(")?;
+                let mut index = 0;
+                for param in parameters {
+                    if index != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param)?;
+                    index += 1;
+                }
+                write!(f, ")")?;
+            }
         }
 
         Ok(())
@@ -675,7 +692,10 @@ pub enum ValueType {
     Reference(Box<PositionedValueType>),
     Array(Box<PositionedNode>, Box<PositionedValueType>),
     Tuple(Vec<PositionedValueType>),
-    Custom(PositionedIdentifier),
+    Custom {
+        name: PositionedIdentifier,
+        generics: Vec<PositionedValueType>,
+    },
 }
 
 impl Display for ValueType {
@@ -701,7 +721,20 @@ impl Display for ValueType {
                 }
                 write!(f, ")")?;
             }
-            ValueType::Custom(str) => write!(f, "{}", str)?,
+            ValueType::Custom { name, generics } => {
+                write!(f, "{}", name)?;
+                if !generics.is_empty() {
+                    write!(f, "<")?;
+                    let mut index = 0;
+                    for generic in generics {
+                        if index != 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", generic)?;
+                    }
+                    write!(f, ">")?;
+                }
+            },
         }
         Ok(())
     }
